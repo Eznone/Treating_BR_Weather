@@ -10,11 +10,11 @@ print("Finished importing")
 
 def filter_data_by_year(df):
     """
-    Filters the DataFrame to include only rows where the year in the date column is between 2018 and 2023 (inclusive),
-    and ensures there are no duplicate months within a year.
+    Filters the DataFrame to include only rows where the year in the 'Data' column is between 2018 and 2023 (inclusive),
+    splits the 'Data' column into 'Year' and 'Month' columns, and ensures a maximum of 5 rows per year and month.
     
     Parameters:
-        df (pd.DataFrame): The input DataFrame with a date column.
+        df (pd.DataFrame): The input DataFrame with a 'Data' column.
     
     Returns:
         pd.DataFrame: The filtered DataFrame.
@@ -33,9 +33,15 @@ def filter_data_by_year(df):
     df['Month'] = df[date_column].dt.month
     print("Began filtering")
     
-    # Filter rows and remove duplicate months within a year
+    # Filter rows for the year range
     filtered_df = df[(df['Year'] >= 2018) & (df['Year'] <= 2023)]
-    filtered_df = filtered_df.drop_duplicates(subset=['Year', 'Month'])
+    
+    # Limit to a maximum of 5 rows per year and month
+    filtered_df = (
+        filtered_df.groupby(['Year', 'Month'])
+        .head(5)
+        .reset_index(drop=True)
+    )
     print("Finished filtering")
     return filtered_df
 
