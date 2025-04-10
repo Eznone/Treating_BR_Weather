@@ -7,20 +7,50 @@ import numpy as np
 def setup_directories():
     unfiltered_folder = os.path.join(os.path.dirname(__file__), "data", "Unfiltered")
     filtered_folder = os.path.join(os.path.dirname(__file__), "data", "Filtered")
+    grouped_folder = os.path.join(os.path.dirname(__file__), "data", "Grouped")
     os.makedirs(unfiltered_folder, exist_ok=True)
     os.makedirs(filtered_folder, exist_ok=True)
-    return unfiltered_folder, filtered_folder
+    os.makedirs(grouped_folder, exist_ok=True)
+    return unfiltered_folder, filtered_folder, grouped_folder
 
 # Group files by year
-def group_files_by_year(unfiltered_folder):
+def group_files_by_year(folder):
     files_by_year = {}
-    for dataset_name in os.listdir(unfiltered_folder):
-        if dataset_name.endswith(".nc"):
-            year = dataset_name.split("_")[-1].replace(".nc", "")  # Extract the year from the filename
+    for dataset_name in os.listdir(folder):
+        if dataset_name.endswith(".nc") or dataset_name.endswith(".csv"):
+            # Determine the file extension and extract the year accordingly
+            if dataset_name.endswith(".nc"):
+                year = dataset_name.split("_")[-1].replace(".nc", "")  # Extract year from .nc file
+            elif dataset_name.endswith(".csv"):
+                year = dataset_name.split("_")[-1].replace(".csv", "")  # Extract year from .csv file
+
+            # Group files by year
             if year not in files_by_year:
                 files_by_year[year] = []
-            files_by_year[year].append(os.path.join(unfiltered_folder, dataset_name))
+            files_by_year[year].append(os.path.join(folder, dataset_name))
     return files_by_year
+
+# Grouping all files into one dataset and saving as a CSV file
+def group_years(files_by_year, grouped_folder):
+    combined_df = None  # Placeholder for the combined DataFrame
+
+    for year, file_paths in files_by_year.items():
+        for file_path in file_paths:
+            dataset_name = os.path.basename(file_path)
+            print(f"Opening dataset: {dataset_name}")
+            df = pd.read_csv(file_path)  # Read the CSV file into a DataFrame
+
+            # Ensure labels are not included multiple times
+            if combined_df is None:
+                combined_df = df  # First dataset, include all rows
+            else:
+                combined_df = pd.concat([combined_df, df[df.columns != 'time']], ignore_index=True)  # Skip duplicate headers
+
+    # Save the combined DataFrame to a CSV file
+    grouped_file_path = os.path.join(grouped_folder, "combined_dataset.csv")
+    print(f"Saving combined dataset to {grouped_file_path}...")
+    combined_df.to_csv(grouped_file_path, index=False)
+    print("Combined dataset saved successfully.")
 
 # Subset the dataset by latitude and longitude
 def subset_dataset(dataset, latbounds, lonbounds):
@@ -83,14 +113,18 @@ def save_to_csv(combined_df, year, filtered_folder):
 
 # Main function
 def main():
-    latbounds = [-9, 1.45]  # Latitude range
-    lonbounds = [-73, -58]  # Longitude range
+    # Adjusted latitude and longitude bounds for the Amazonas state in Brazil
+    latbounds = [-10, 2]  # Latitude range (approximately 10°S to 2°N)
+    lonbounds = [-74, -56]  # Longitude range (approximately 75°W to 56°W)
 
-    unfiltered_folder, filtered_folder = setup_directories()
+    unfiltered_folder, filtered_folder, grouped_folder = setup_directories()
     files_by_year = group_files_by_year(unfiltered_folder)
 
     for year, file_paths in files_by_year.items():
         process_year(year, file_paths, latbounds, lonbounds, filtered_folder)
+
+    files_by_year = group_files_by_year(filtered_folder)
+    group_years(files_by_year, grouped_folder)
 
 if __name__ == "__main__":
     main()
