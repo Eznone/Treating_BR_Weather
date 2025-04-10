@@ -2,144 +2,95 @@ import xarray as xr
 import pandas as pd  # Import pandas for CSV operations
 import os
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Ensure the 'data/Unfiltered' and 'data/Filtered' folders exist
-def setup_directories():
-    unfiltered_folder = os.path.join(os.path.dirname(__file__), "data", "Unfiltered")
-    filtered_folder = os.path.join(os.path.dirname(__file__), "data", "Filtered")
-    grouped_folder = os.path.join(os.path.dirname(__file__), "data", "Grouped")
-    os.makedirs(unfiltered_folder, exist_ok=True)
-    os.makedirs(filtered_folder, exist_ok=True)
-    os.makedirs(grouped_folder, exist_ok=True)
-    return unfiltered_folder, filtered_folder, grouped_folder
+# Load the combined_dataset.csv file
+csv_file_path = "combined_dataset.csv"
+df = pd.read_csv(csv_file_path)
 
-# Group files by year
-def group_files_by_year(folder):
-    files_by_year = {}
-    for dataset_name in os.listdir(folder):
-        if dataset_name.endswith(".nc") or dataset_name.endswith(".csv"):
-            # Determine the file extension and extract the year accordingly
-            if dataset_name.endswith(".nc"):
-                year = dataset_name.split("_")[-1].replace(".nc", "")  # Extract year from .nc file
-            elif dataset_name.endswith(".csv"):
-                year = dataset_name.split("_")[-1].replace(".csv", "")  # Extract year from .csv file
+# 3.1 Descriptive Statistics
+def descriptive_statistics(data):
+    print("Descriptive Statistics:")
+    print(data.describe())
+    print("\n")
 
-            # Group files by year
-            if year not in files_by_year:
-                files_by_year[year] = []
-            files_by_year[year].append(os.path.join(folder, dataset_name))
-    return files_by_year
+# 3.2 Distribution Visualizations
+def distribution_visualizations(data, numeric_columns):
+    for col in numeric_columns:
+        plt.figure(figsize=(10, 5))
+        sns.histplot(data[col], kde=True, bins=30)
+        plt.title(f"Distribution of {col}")
+        plt.show()
 
-# Grouping all files into one dataset and saving as a CSV file
-def group_years(files_by_year, grouped_folder):
-    combined_df = None  # Placeholder for the combined DataFrame
+# 3.3 Correlation Analysis
+def correlation_analysis(data, numeric_columns):
+    correlation_matrix = data[numeric_columns].corr()
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", fmt=".2f")
+    plt.title("Correlation Matrix")
+    plt.show()
 
-    for year, file_paths in files_by_year.items():
-        for file_path in file_paths:
-            dataset_name = os.path.basename(file_path)
-            print(f"Opening dataset: {dataset_name}")
-            df = pd.read_csv(file_path)  # Read the CSV file into a DataFrame
+# 3.4 Scatter Plots
+def scatter_plots(data, numeric_columns):
+    for i, col1 in enumerate(numeric_columns):
+        for col2 in numeric_columns[i+1:]:
+            plt.figure(figsize=(8, 6))
+            sns.scatterplot(x=data[col1], y=data[col2])
+            plt.title(f"Scatter Plot: {col1} vs {col2}")
+            plt.show()
 
-            # Ensure labels are not included multiple times
-            if combined_df is None:
-                combined_df = df  # First dataset, include all rows
-            else:
-                combined_df = pd.concat([combined_df, df], ignore_index=True)  # Skip the first row of subsequent datasets
+# 3.5 Categorical Data Analysis
+def categorical_data_analysis(data, categorical_columns):
+    for col in categorical_columns:
+        plt.figure(figsize=(10, 5))
+        sns.countplot(x=data[col])
+        plt.title(f"Category Distribution: {col}")
+        plt.show()
 
-    # Save the combined DataFrame to a CSV file
-    grouped_file_path = os.path.join(grouped_folder, "combined_dataset.csv")
-    print(f"Saving combined dataset to {grouped_file_path}...")
-    combined_df.to_csv(grouped_file_path, index=False)
-    print("Combined dataset saved successfully.")
+# 3.6 Temporal Analysis
+def temporal_analysis(data, time_column, numeric_columns):
+    if time_column in data.columns:
+        data[time_column] = pd.to_datetime(data[time_column])
+        for col in numeric_columns:
+            plt.figure(figsize=(12, 6))
+            plt.plot(data[time_column], data[col])
+            plt.title(f"Temporal Analysis of {col}")
+            plt.xlabel("Time")
+            plt.ylabel(col)
+            plt.show()
 
-# Subset the dataset by latitude and longitude
-def subset_dataset(dataset, latbounds, lonbounds):
-    lat = dataset['lat'].values
-    lon = dataset['lon'].values
-    lat_index_min = (np.abs(lat - latbounds[0])).argmin()
-    lat_index_max = (np.abs(lat - latbounds[1])).argmin()
-    lon_index_min = (np.abs(lon - lonbounds[0])).argmin()
-    lon_index_max = (np.abs(lon - lonbounds[1])).argmin()
+# 3.7 Geospatial Analysis
+def geospatial_analysis(data, lat_column, lon_column):
+    if lat_column in data.columns and lon_column in data.columns:
+        plt.figure(figsize=(10, 8))
+        plt.scatter(data[lon_column], data[lat_column], alpha=0.5)
+        plt.title("Geospatial Distribution")
+        plt.xlabel("Longitude")
+        plt.ylabel("Latitude")
+        plt.show()
 
-    lat_index_range = slice(min(lat_index_min, lat_index_max), max(lat_index_min, lat_index_max) + 1)
-    lon_index_range = slice(min(lon_index_min, lon_index_max), max(lon_index_min, lon_index_max) + 1)
+# 3.8 Important Insights
+def summarize_insights():
+    print("Summary of Insights:")
+    print("- Observed patterns and trends.")
+    print("- Relevant variables identified.")
+    print("- Potential challenges and issues noted.")
+    print("\n")
 
-    return dataset.isel(lat=lat_index_range, lon=lon_index_range)
-
-# Process files for a specific year
-def process_year(year, file_paths, latbounds, lonbounds, filtered_folder):
-    print(f"Processing files for year: {year}")
-    combined_data = None
-
-    for file_path in file_paths:
-        dataset_name = os.path.basename(file_path)
-        print(f"Opening dataset: {dataset_name}")
-        dataset = xr.open_dataset(file_path)
-
-        # Subset the dataset
-        subset = subset_dataset(dataset, latbounds, lonbounds)
-
-        # Combine data for the year
-        if combined_data is None:
-            combined_data = subset
-        else:
-            combined_data = xr.merge([combined_data, subset])  # Merge datasets
-
-    # Convert the combined dataset to a DataFrame
-    combined_df = combined_data.to_dataframe().reset_index()
-
-    # Bin latitude and longitude into groups of 10 and calculate the midpoint
-    combined_df['lat_bin'] = (combined_df['lat'] // 10) * 10 + 5  # Bin latitudes and represent as midpoint
-    combined_df['lon_bin'] = (combined_df['lon'] // 10) * 10 + 5  # Bin longitudes and represent as midpoint
-
-    # Group by time, lat_bin, and lon_bin, and calculate the mean for other columns
-    combined_df = combined_df.groupby(['time', 'lat_bin', 'lon_bin']).mean().reset_index()
-
-    # Rename columns to clearer names
-    combined_df.rename(columns={
-        'time': 'date',
-        'lat_bin': 'latitude_bin',
-        'lon_bin': 'longitude_bin',
-        'lat': 'average_latitude',
-        'lon': 'average_longitude',
-        'crs': 'coordinate_reference_system',
-        'def': 'deficit',
-        'PDSI': 'palmer_drought_severity_index',
-        'pet': 'potential_evapotranspiration',
-        'ppt': 'precipitation',
-        'tmax': 'maximum_temperature',
-        'tmin': 'minimum_temperature',
-        'vap': 'vapor_pressure',
-        'vpd': 'vapor_pressure_deficit',
-        'ws': 'wind_speed'
-    }, inplace=True)
-
-    # Save the processed data to a CSV file
-    save_to_csv(combined_df, year, filtered_folder)
-
-# Save the processed data to a CSV file
-def save_to_csv(combined_df, year, filtered_folder):
-    csv_path = os.path.join(filtered_folder, f"{year}.csv")
-    write_header = True  # Flag to write the header only once
-
-    # Write the entire DataFrame to the CSV file in one go
-    combined_df.to_csv(csv_path, index=False, header=write_header)
-    print(f"Dataset for year {year} saved to {csv_path}")
-
-# Main function
-def main():
-    # Adjusted latitude and longitude bounds for the Amazonas state in Brazil
-    latbounds = [-10, 2]  # Latitude range (approximately 10°S to 2°N)
-    lonbounds = [-74, -56]  # Longitude range (approximately 75°W to 56°W)
-
-    unfiltered_folder, filtered_folder, grouped_folder = setup_directories()
-    files_by_year = group_files_by_year(unfiltered_folder)
-
-    for year, file_paths in files_by_year.items():
-        process_year(year, file_paths, latbounds, lonbounds, filtered_folder)
-
-    files_by_year = group_files_by_year(filtered_folder)
-    group_years(files_by_year, grouped_folder)
-
+# Example usage
 if __name__ == "__main__":
-    main()
+    numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+    categorical_columns = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    
+    descriptive_statistics(df)
+    distribution_visualizations(df, numeric_columns)
+    correlation_analysis(df, numeric_columns)
+    scatter_plots(df, numeric_columns)
+    categorical_data_analysis(df, categorical_columns)
+    # Uncomment and modify the following lines if temporal or geospatial data is present
+    # temporal_analysis(df, "time_column_name", numeric_columns)
+    # geospatial_analysis(df, "latitude_column_name", "longitude_column_name")
+    summarize_insights()
+
+

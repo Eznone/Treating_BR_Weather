@@ -6,3 +6,4 @@ scikit-learn
 xarray
 netCDF4
 requests
+seaborn
