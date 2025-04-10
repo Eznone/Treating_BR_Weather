@@ -44,7 +44,7 @@ def group_years(files_by_year, grouped_folder):
             if combined_df is None:
                 combined_df = df  # First dataset, include all rows
             else:
-                combined_df = pd.concat([combined_df, df[df.columns != 'time']], ignore_index=True)  # Skip duplicate headers
+                combined_df = pd.concat([combined_df, df], ignore_index=True)  # Skip the first row of subsequent datasets
 
     # Save the combined DataFrame to a CSV file
     grouped_file_path = os.path.join(grouped_folder, "combined_dataset.csv")
@@ -85,9 +85,34 @@ def process_year(year, file_paths, latbounds, lonbounds, filtered_folder):
         else:
             combined_data = xr.merge([combined_data, subset])  # Merge datasets
 
-    # Average data for duplicate dates
+    # Convert the combined dataset to a DataFrame
     combined_df = combined_data.to_dataframe().reset_index()
-    combined_df = combined_df.groupby("time").mean().reset_index()  # Average data by date
+
+    # Bin latitude and longitude into groups of 10 and calculate the midpoint
+    combined_df['lat_bin'] = (combined_df['lat'] // 10) * 10 + 5  # Bin latitudes and represent as midpoint
+    combined_df['lon_bin'] = (combined_df['lon'] // 10) * 10 + 5  # Bin longitudes and represent as midpoint
+
+    # Group by time, lat_bin, and lon_bin, and calculate the mean for other columns
+    combined_df = combined_df.groupby(['time', 'lat_bin', 'lon_bin']).mean().reset_index()
+
+    # Rename columns to clearer names
+    combined_df.rename(columns={
+        'time': 'date',
+        'lat_bin': 'latitude_bin',
+        'lon_bin': 'longitude_bin',
+        'lat': 'average_latitude',
+        'lon': 'average_longitude',
+        'crs': 'coordinate_reference_system',
+        'def': 'deficit',
+        'PDSI': 'palmer_drought_severity_index',
+        'pet': 'potential_evapotranspiration',
+        'ppt': 'precipitation',
+        'tmax': 'maximum_temperature',
+        'tmin': 'minimum_temperature',
+        'vap': 'vapor_pressure',
+        'vpd': 'vapor_pressure_deficit',
+        'ws': 'wind_speed'
+    }, inplace=True)
 
     # Save the processed data to a CSV file
     save_to_csv(combined_df, year, filtered_folder)
@@ -96,19 +121,9 @@ def process_year(year, file_paths, latbounds, lonbounds, filtered_folder):
 def save_to_csv(combined_df, year, filtered_folder):
     csv_path = os.path.join(filtered_folder, f"{year}.csv")
     write_header = True  # Flag to write the header only once
-    batch_size = 3  # Number of rows to process in each batch
-    batch_data = []  # Temporary storage for batch data
 
-    for i, row in combined_df.iterrows():
-        batch_data.append(row.to_frame().T)  # Add the row to the batch
-
-        # Write the batch to the CSV file when the batch is full
-        if (i + 1) % batch_size == 0 or i == len(combined_df) - 1:
-            print(f"Writing batch to CSV (rows {i - batch_size + 2} to {i + 1})...")
-            pd.concat(batch_data).to_csv(csv_path, mode="a", index=False, header=write_header)
-            write_header = False  # Disable header writing after the first batch
-            batch_data = []  # Clear the batch
-
+    # Write the entire DataFrame to the CSV file in one go
+    combined_df.to_csv(csv_path, index=False, header=write_header)
     print(f"Dataset for year {year} saved to {csv_path}")
 
 # Main function
