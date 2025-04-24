@@ -3,6 +3,19 @@ import pandas as pd  # Import pandas for CSV operations
 import os
 import numpy as np
 
+# define per‐state bounds
+state_bounds = {
+    "Amazonas":  {"latbounds": [-8.5, 2.5],  "lonbounds": [-74, -60]},
+    "Pará":      {"latbounds": [-8,   1],    "lonbounds": [-60, -48]},
+    "Acre":      {"latbounds": [-11, -7],    "lonbounds": [-74, -67]},
+    "Rondônia":  {"latbounds": [-13.5,-8.5], "lonbounds": [-67, -60]},
+    "Roraima":   {"latbounds": [1,    5],    "lonbounds": [-64, -60]},
+    "Amapá":     {"latbounds": [-1,   4],    "lonbounds": [-54, -51]},
+    "Mato Grosso":{"latbounds": [-12.5,-8],  "lonbounds": [-60, -52]},
+    "Tocantins": {"latbounds": [-9,   -5],   "lonbounds": [-50, -47]},
+    "Maranhão":  {"latbounds": [-7,   -2],   "lonbounds": [-48, -45]}
+}
+
 # Ensure the 'data/Unfiltered' and 'data/Filtered' folders exist
 def setup_directories():
     unfiltered_folder = os.path.join(os.path.dirname(__file__), "data", "Unfiltered")
@@ -66,41 +79,26 @@ def subset_dataset(dataset, latbounds, lonbounds):
 
     return dataset.isel(lat=lat_index_range, lon=lon_index_range)
 
-# Process files for a specific year
-def process_year(year, file_paths, latbounds, lonbounds, filtered_folder):
-    print(f"Processing files for year: {year}")
+# Process files for a specific year and state
+def process_year(state, year, file_paths, bounds, filtered_folder):
+    print(f"Processing {state} for year {year}")
     combined_data = None
 
-    for file_path in file_paths:
-        dataset_name = os.path.basename(file_path)
-        print(f"Opening dataset: {dataset_name}")
-        dataset = xr.open_dataset(file_path)
-
-        # Subset the dataset
-        subset = subset_dataset(dataset, latbounds, lonbounds)
-
-        # Combine data for the year
+    for fp in file_paths:
+        ds = xr.open_dataset(fp)
+        sub = subset_dataset(ds, bounds["latbounds"], bounds["lonbounds"])
         if combined_data is None:
-            combined_data = subset
+            combined_data = sub
         else:
-            combined_data = xr.merge([combined_data, subset])  # Merge datasets
+            combined_data = xr.concat([combined_data, sub], dim='time')
 
-    # Convert the combined dataset to a DataFrame
-    combined_df = combined_data.to_dataframe().reset_index()
+    df = combined_data.to_dataframe().reset_index()
+    # average over the entire state area per time
+    df = df.groupby(['time']).mean().reset_index()
+    df.rename(columns={'time': 'date'}, inplace=True)
+    df['state'] = state
 
-    # Bin latitude and longitude into groups of 10 and calculate the midpoint
-    combined_df['lat_bin'] = (combined_df['lat'] // 10) * 10 + 5  # Bin latitudes and represent as midpoint
-    combined_df['lon_bin'] = (combined_df['lon'] // 10) * 10 + 5  # Bin longitudes and represent as midpoint
-
-    # Group by time, lat_bin, and lon_bin, and calculate the mean for other columns
-    combined_df = combined_df.groupby(['time', 'lat_bin', 'lon_bin']).mean().reset_index()
-
-    # Drop lat_bin and lon_bin columns
-    combined_df.drop(columns=['lat_bin', 'lon_bin'], inplace=True)
-
-    # Rename columns to clearer names
-    combined_df.rename(columns={
-        'time': 'date',
+    df.rename(columns={
         'lat': 'average_latitude',
         'lon': 'average_longitude',
         'crs': 'coordinate_reference_system',
@@ -115,32 +113,26 @@ def process_year(year, file_paths, latbounds, lonbounds, filtered_folder):
         'ws': 'wind_speed'
     }, inplace=True)
 
-    # Save the processed data to a CSV file
-    save_to_csv(combined_df, year, filtered_folder)
+    save_to_csv(df, state, year, filtered_folder)
+
 
 # Save the processed data to a CSV file
-def save_to_csv(combined_df, year, filtered_folder):
-    csv_path = os.path.join(filtered_folder, f"{year}.csv")
-    write_header = True  # Flag to write the header only once
-
-    # Write the entire DataFrame to the CSV file in one go
-    combined_df.to_csv(csv_path, index=False, header=write_header)
-    print(f"Dataset for year {year} saved to {csv_path}")
+def save_to_csv(df, state, year, filtered_folder):
+    csv_path = os.path.join(filtered_folder, f"{state}_{year}.csv")
+    df.to_csv(csv_path, index=False, header=True)
+    print(f"{state} {year} → {csv_path}")
 
 # Main function
 def main():
-    # Adjusted latitude and longitude bounds for the Amazonas state in Brazil
-    latbounds = [-10, 2]  # Latitude range (approximately 10°S to 2°N)
-    lonbounds = [-74, -56]  # Longitude range (approximately 75°W to 56°W)
+    unfiltered, filtered, grouped = setup_directories()
+    files_by_year = group_files_by_year(unfiltered)
 
-    unfiltered_folder, filtered_folder, grouped_folder = setup_directories()
-    files_by_year = group_files_by_year(unfiltered_folder)
+    for state, bounds in state_bounds.items():
+        for year, fps in files_by_year.items():
+            process_year(state, year, fps, bounds, filtered)
 
-    for year, file_paths in files_by_year.items():
-        process_year(year, file_paths, latbounds, lonbounds, filtered_folder)
-
-    files_by_year = group_files_by_year(filtered_folder)
-    group_years(files_by_year, grouped_folder)
+    files_by_year = group_files_by_year(filtered)
+    group_years(files_by_year, grouped)
 
 if __name__ == "__main__":
     main()
